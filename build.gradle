@@ -1,0 +1,195 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.1.0'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'jacoco'
+}
+
+group = 'br.com.itau'
+version = '0.0.1-SNAPSHOT'
+description = 'itau-code-challange-starter-kit'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation platform('software.amazon.awssdk:bom:2.46.7')
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'software.amazon.awssdk:dynamodb'
+	implementation 'org.springframework.boot:spring-boot-starter-kafka'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// Integration tests require live infrastructure (e.g. `make db-up`) and are intentionally
+// kept out of `test`/`check` so the default build stays infra-free and gate-friendly.
+sourceSets {
+	integrationTest {
+		java.srcDir 'src/integrationTest/java'
+		resources.srcDir 'src/integrationTest/resources'
+		compileClasspath += sourceSets.main.output + sourceSets.test.output
+		runtimeClasspath += sourceSets.main.output + sourceSets.test.output
+	}
+}
+
+configurations {
+	integrationTestImplementation.extendsFrom testImplementation
+	integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+def integrationTest = tasks.register('integrationTest', Test) {
+	description = 'Runs integration tests against live infrastructure (start it first with `make db-up`).'
+	group = 'verification'
+	testClassesDirs = sourceSets.integrationTest.output.classesDirs
+	classpath = sourceSets.integrationTest.runtimeClasspath
+	useJUnitPlatform()
+	shouldRunAfter tasks.test
+
+	testLogging {
+		events 'passed', 'skipped', 'failed'
+		exceptionFormat = 'short'
+	}
+}
+
+jacoco {
+	toolVersion = '0.8.12'
+}
+
+tasks.withType(Test).configureEach {
+	useJUnitPlatform()
+	finalizedBy tasks.jacocoTestReport
+
+	testLogging {
+		events 'passed', 'skipped', 'failed'
+		exceptionFormat = 'short'
+		showStandardStreams = false
+	}
+
+	afterSuite { descriptor, result ->
+		if (descriptor.className != null) {
+			def outcome = result.failedTestCount == 0 ? 'PASSED' : 'FAILED'
+			println(String.format(
+					'  %-70s %-6s (%d tests, %d passed, %d failed, %d skipped)',
+					descriptor.className,
+					outcome,
+					result.testCount,
+					result.successfulTestCount,
+					result.failedTestCount,
+					result.skippedTestCount,
+			))
+		}
+	}
+}
+
+def jacocoCoverageExclusions = [
+	// Framework bootstrap: `main` is never invoked by tests, only Spring's test context machinery.
+	'br/com/itau/challenge/Application.class',
+]
+
+def coverageMinimum = 0.90
+
+tasks.jacocoTestReport {
+	dependsOn tasks.test
+
+	classDirectories.setFrom(
+			classDirectories.files.collect {
+				fileTree(dir: it, exclude: jacocoCoverageExclusions)
+			}
+	)
+
+	reports {
+		xml.required = true
+		html.required = true
+	}
+
+	doLast {
+		printCoverageSummary(reports.xml.outputLocation.asFile.get(), coverageMinimum)
+	}
+}
+
+tasks.jacocoTestCoverageVerification {
+	dependsOn tasks.jacocoTestReport
+
+	classDirectories.setFrom(
+			classDirectories.files.collect {
+				fileTree(dir: it, exclude: jacocoCoverageExclusions)
+			}
+	)
+
+	violationRules {
+		rule {
+			limit {
+				minimum = coverageMinimum
+			}
+		}
+	}
+}
+
+tasks.check {
+	dependsOn tasks.jacocoTestCoverageVerification
+}
+
+def printCoverageSummary(File reportFile, double minimum) {
+	if (!reportFile.exists()) return
+
+	def factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+	factory.setFeature('http://apache.org/xml/features/disallow-doctype-decl', false)
+	factory.setFeature('http://apache.org/xml/features/nonvalidating/load-external-dtd', false)
+	def document = factory.newDocumentBuilder().parse(reportFile)
+	def root = document.documentElement
+
+	def directCounters = { org.w3c.dom.Element element ->
+		def counters = [:]
+		def children = element.childNodes
+		for (int i = 0; i < children.length; i++) {
+			def node = children.item(i)
+			if (node instanceof org.w3c.dom.Element && node.tagName == 'counter') {
+				def covered = node.getAttribute('covered') as int
+				def missed = node.getAttribute('missed') as int
+				counters[node.getAttribute('type')] = [covered, missed]
+			}
+		}
+		counters
+	}
+
+	def percentage = { counters, type ->
+		def pair = counters[type]
+		if (pair == null) return 100.0d
+		def total = pair[0] + pair[1]
+		total == 0 ? 100.0d : (pair[0] as double) / total * 100.0d
+	}
+
+	def overall = directCounters(root)
+	def types = ['INSTRUCTION', 'BRANCH', 'LINE', 'COMPLEXITY', 'METHOD', 'CLASS']
+
+	def header = String.format('%-12s %8s %8s %8s %8s', 'Type', 'Covered', 'Missed', 'Total', 'Coverage')
+	def bar = '-' * header.length()
+
+	println()
+	println('Coverage summary')
+	println(bar)
+	println(header)
+	println(bar)
+
+	types.each { type ->
+		def pair = overall[type]
+		if (pair == null) return
+		def total = pair[0] + pair[1]
+		println(String.format('%-12s %8d %8d %8d %7.1f%%', type.toLowerCase().capitalize(), pair[0], pair[1], total, percentage(overall, type)))
+	}
+
+	println(bar)
+
+	def instructionPct = percentage(overall, 'INSTRUCTION')
+	def gate = instructionPct >= minimum * 100 ? 'PASS' : 'FAIL'
+	println(String.format('Gate: minimum %.0f%% instruction coverage -> %s (%.1f%%)', minimum * 100, gate, instructionPct))
+	println()
+}
