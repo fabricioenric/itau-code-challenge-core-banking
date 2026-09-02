@@ -1,11 +1,11 @@
-### Get a random greeting for a requester
-GET {{host}}/hello?name=John
+### Consulta de saldo existente
+GET http://localhost:8080/balances/5b19c8b6-0cc4-4c72-a989-0c2ee15fa975
 Accept: application/json
 
-### Missing name should respond with a JSON 400 error
-GET {{host}}/hello
+### Conta inexistente (404)
+GET http://localhost:8080/balances/00000000-0000-0000-0000-000000000000
 Accept: application/json
 
-### Blank name should respond with a JSON 400 error
-GET {{host}}/hello?name=%20%20
+### UUID inválido (400)
+GET http://localhost:8080/balances/isso-nao-e-um-uuid
 Accept: application/json

@@ -13,16 +13,19 @@ import java.net.URI;
 @Configuration
 public class DynamoDbConfig {
 
-	@Bean
-	public DynamoDbClient dynamoDbClient(
-			@Value("${dynamodb.endpoint}") String endpoint,
-			@Value("${dynamodb.region}") String region) {
-		return DynamoDbClient
-				.builder()
-				.endpointOverride(URI.create(endpoint))
-				.region(Region.of(region))
-				.credentialsProvider(
-						StaticCredentialsProvider.create(AwsBasicCredentials.create("local", "local")))
-				.build();
-	}
+    @Value("${DYNAMODB_ENDPOINT:http://localhost:8000}")
+    private String endpoint;
+
+    @Value("${DYNAMODB_REGION:us-east-1}")
+    private String region;
+
+    @Bean
+    public DynamoDbClient dynamoDbClient() {
+        return DynamoDbClient.builder()
+                .endpointOverride(URI.create(endpoint))
+                .region(Region.of(region))
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create("local", "local")))
+                .build();
+    }
 }
