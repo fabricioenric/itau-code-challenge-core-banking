@@ -141,7 +141,9 @@ class TransactionEventMapperTest {
     }
 
     @Test
-    void deveLancarExcecaoQuandoAmountForNegativo() {
+    void deveMapearAmountNegativoSemValidarRegraDeNegocio() {
+        // A validação de valores de negócio (ex.: amount negativo) é responsabilidade da camada
+        // de aplicação (ProcessTransactionEventService), não do mapper — ver ProcessTransactionEventServiceTest.
         TransactionEventDTO dto = new TransactionEventDTO(
                 validTransactionDto("APPROVED"),
                 new TransactionEventDTO.AccountDTO(
@@ -150,7 +152,9 @@ class TransactionEventMapperTest {
                 )
         );
 
-        assertThrows(InvalidTransactionEventException.class, () -> TransactionEventMapper.toDomain(dto));
+        TransactionEvent event = TransactionEventMapper.toDomain(dto);
+
+        assertEquals(new BigDecimal("-10.00"), event.balance().getAmount());
     }
 
     private TransactionEventDTO validDtoWithStatus(String status) {

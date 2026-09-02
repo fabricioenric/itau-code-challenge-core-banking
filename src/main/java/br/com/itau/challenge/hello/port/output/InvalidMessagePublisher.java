@@ -6,6 +6,7 @@ public interface InvalidMessagePublisher {
 
     enum ErrorType {
         DESERIALIZATION_ERROR,
-        VALIDATION_ERROR
+        VALIDATION_ERROR,
+        PROCESSING_ERROR
     }
 }

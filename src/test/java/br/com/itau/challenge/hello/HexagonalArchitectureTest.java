@@ -109,7 +109,8 @@ class HexagonalArchitectureTest {
                 .resideInAnyPackage(
                         ADAPTER, PORT, DOMAIN,
                         "java..", "org.springframework..", "org.slf4j..",
-                        "tools.jackson..", "software.amazon.awssdk..",
+                        "tools.jackson..", "com.fasterxml.jackson.annotation..",
+                        "software.amazon.awssdk..",
                         "org.apache.kafka..", "org.mockito..", "org.junit.."
                 );
 

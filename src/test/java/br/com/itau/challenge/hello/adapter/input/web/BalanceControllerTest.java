@@ -6,7 +6,7 @@ import br.com.itau.challenge.hello.domain.model.Balance;
 import br.com.itau.challenge.hello.port.input.GetBalanceUseCase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
@@ -50,7 +50,8 @@ class BalanceControllerTest {
                 .andExpect(jsonPath("$.owner").value(OWNER_ID.toString()))
                 .andExpect(jsonPath("$.balance.amount").value(183.12))
                 .andExpect(jsonPath("$.balance.currency").value("BRL"))
-                .andExpect(jsonPath("$.updatedAt").exists());
+                .andExpect(jsonPath("$.updated_at").exists())
+                .andExpect(jsonPath("$.updatedAt").doesNotExist());
     }
 
     @Test

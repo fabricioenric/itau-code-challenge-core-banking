@@ -1,17 +1,20 @@
 package br.com.itau.challenge.hello.adapter.input.web.dto;
 
 import br.com.itau.challenge.hello.domain.model.AccountBalance;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record BalanceResponse(
     UUID id,
     UUID owner,
     BalanceDto balance,
-    OffsetDateTime updatedAt
+    @JsonProperty("updated_at") OffsetDateTime updatedAt
 ) {
 
     public record BalanceDto(

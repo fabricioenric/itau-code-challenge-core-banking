@@ -4,6 +4,7 @@ import br.com.itau.challenge.hello.domain.model.AccountBalance;
 import br.com.itau.challenge.hello.domain.model.Balance;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 
