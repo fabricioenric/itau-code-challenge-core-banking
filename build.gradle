@@ -39,7 +39,7 @@ dependencies {
 	implementation platform('software.amazon.awssdk:bom:2.29.0')
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
-    implementation 'org.springframework.kafka:spring-kafka'
+    implementation 'org.springframework.boot:spring-boot-starter-kafka'
     implementation 'software.amazon.awssdk:dynamodb'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
