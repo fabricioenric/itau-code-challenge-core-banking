@@ -10,10 +10,13 @@ Microsserviço de **consulta de saldo** para o desafio técnico Itaú Unibanco (
 ## Sumário
 
 - [Escopo do desafio](#escopo-do-desafio)
+- [O que já vinha pronto vs. o que foi construído](#o-que-já-vinha-pronto-vs-o-que-foi-construído)
 - [Stack](#stack)
 - [Arquitetura](#arquitetura)
 - [Estrutura de pastas](#estrutura-de-pastas)
 - [Regra de negócio](#regra-de-negócio)
+- [Decisões técnicas](#decisões-técnicas)
+- [Modelo de dados — DynamoDB](#modelo-de-dados--dynamodb)
 - [Endpoints da API](#endpoints-da-api)
 - [Mensageria Kafka](#mensageria-kafka)
 - [Imagens Docker utilizadas](#imagens-docker-utilizadas)
@@ -22,7 +25,9 @@ Microsserviço de **consulta de saldo** para o desafio técnico Itaú Unibanco (
 - [Comandos do Makefile](#comandos-do-makefile)
 - [Testes](#testes)
 - [Cobertura de testes](#cobertura-de-testes)
+- [Validação end-to-end (evidências)](#validação-end-to-end-evidências)
 - [Trade-offs e próximos passos](#trade-offs-e-próximos-passos)
+- [Aderência aos critérios de avaliação](#aderência-aos-critérios-de-avaliação)
 
 ## Escopo do desafio
 
@@ -30,6 +35,26 @@ Microsserviço de **consulta de saldo** para o desafio técnico Itaú Unibanco (
 2. **Exposição** — disponibilizar um endpoint REST (`GET /balances/{accountId}`) para consulta do saldo mais atual de uma conta.
 
 Um sistema de autorização (fora do escopo deste serviço) publica as transações já aprovadas/rejeitadas no tópico Kafka. Cada mensagem já inclui o **saldo mais atual do cliente** calculado pelo autorizador — esta aplicação não recalcula saldo a partir de débitos/créditos, apenas **persiste o snapshot de saldo mais recente por conta**, usando o `timestamp` do evento para decidir o que é "mais recente" (mensagens podem chegar fora de ordem).
+
+## O que já vinha pronto vs. o que foi construído
+
+Este repositório parte do `itau-code-challange-starter-kit`, o template oficial do desafio, que já trazia pronto:
+
+- o esqueleto de arquitetura hexagonal (pastas `domain`/`port`/`application`/`adapter`) e o teste que a protege (`HexagonalArchitectureTest`, ArchUnit);
+- toda a infraestrutura local em Docker Compose (DynamoDB Local, Redpanda, consoles web, containers de seed);
+- o `Makefile`, o gate de cobertura JaCoCo (90%) e o pipeline de CI (GitHub Actions);
+- um exemplo de ponta a ponta **de outro domínio** (`GreetingTemplateConsumer`/`GreetingController`, um "hello world" com Kafka + DynamoDB) demonstrando o padrão a seguir.
+
+**Nada da lógica de negócio do desafio vinha pronta.** O que foi construído em cima do template:
+
+- os modelos de domínio (`TransactionEvent`, `AccountBalance`, `Balance`, `TransactionType`, `TransactionStatus`) e as duas exceções de negócio;
+- os quatro contratos de porta (`GetBalanceUseCase`, `ProcessTransactionEventUseCase`, `BalanceRepository`, `InvalidMessagePublisher`) e os dois casos de uso que os implementam;
+- o consumer Kafka completo — desserialização, mapeamento, validação estrutural, e a configuração de retry/backoff/DLT (`KafkaConsumerConfig`, ausente no template);
+- o adaptador DynamoDB com escrita condicional atômica (`saveIfNewer`) — o template só fazia `Scan`/`PutItem` simples, sem tratar concorrência;
+- o endpoint REST (`BalanceController`) e o tratamento de erros HTTP (`GlobalExceptionHandler`);
+- 64 testes novos (58 unitários + 6 de integração — de um total de 68 unitários, os outros 10 são `ApplicationTests` e `HexagonalArchitectureTest` adaptados do template), cobrindo especificamente os cenários que o enunciado pede ("mensagens duplicadas, transações fora de ordem, conta inexistente");
+- Spring Boot Actuator, não presente no template;
+- e a limpeza completa de tudo que era específico do exemplo `hello`/`greeting` — pacote raiz renomeado, scripts de seed reescritos, arquivos mortos removidos, nomes de imagem Docker/CI corrigidos (ver [Aderência aos critérios de avaliação](#aderência-aos-critérios-de-avaliação)).
 
 ## Stack
 
@@ -168,6 +193,55 @@ O evento publicado pelo autorizador já traz o **saldo mais atual do cliente** (
 - **Eventos estruturalmente inválidos** (UUID malformado, enum desconhecido, `balance` ausente ou negativo, payload não parseável) são desviados para a DLT e o offset é confirmado — não bloqueiam o consumo dos eventos seguintes.
 - **Falhas transitórias de processamento** (ex.: DynamoDB temporariamente indisponível) fazem o offset **não** ser confirmado; o `DefaultErrorHandler` reprocessa a mesma mensagem com backoff exponencial (5 tentativas) antes de desviá-la para a DLT.
 
+## Decisões técnicas
+
+| Decisão | Motivo |
+|-|-|
+| Escrita condicional no DynamoDB (`ConditionExpression`) em vez de lock distribuído | Resolve "aplique só se for mais recente" como uma única operação atômica nativa do banco — sem round-trip extra, sem estado de lock para vazar se o consumer cair no meio do processamento. |
+| Persistir o snapshot de saldo do evento, não recalcular por delta | O autorizador (fora do escopo) já resolve a regra de negócio de crédito/débito e possíveis estornos; recalcular aqui duplicaria essa lógica e criaria uma segunda fonte de verdade para o mesmo saldo. |
+| Sem sort key na tabela `AccountBalances` | O único padrão de acesso pedido é "saldo mais atual por conta" — um item por `account_id` já atende; não há necessidade de histórico de versões nesta tabela. |
+| `DefaultErrorHandler` com backoff exponencial + DLT customizada, em vez do handler padrão do Spring Kafka | O handler padrão do Spring Boot não publica na DLT sozinho; a DLT customizada reaproveita o mesmo `InvalidMessagePublisher` usado para erros de validação/desserialização, mantendo um único formato de envelope para qualquer tipo de rejeição. |
+| Arquitetura hexagonal mantida (não simplificada) | O domínio (`TransactionEvent`, `AccountBalance`) não conhece Kafka nem DynamoDB — trocar o broker ou o banco não exigiria tocar em regra de negócio, só no adapter correspondente. Validado automaticamente pelo `HexagonalArchitectureTest`. |
+| Spring Boot Actuator adicionado | Item explícito de avaliação ("production readiness — logging, métricas, conteinerização"); custo de implementação é uma dependência + configuração, sem código novo. |
+
+## Modelo de dados — DynamoDB
+
+Tabela única, sem índice secundário, cobrindo o único padrão de acesso do desafio: "dado um `accountId`, qual o saldo mais atual".
+
+| Atributo | Tipo (DynamoDB) | Tipo (Java) | Papel | Descrição |
+|-|-|-|-|-|
+| `account_id` | `S` | `UUID` | **Partition key (HASH)** | identificador da conta — único ponto de acesso à tabela |
+| `owner` | `S` | `UUID` (opcional) | — | titular da conta; gravado como string vazia quando ausente, devolvido como `null` na leitura |
+| `balance_amount` | `N` | `BigDecimal` (escala 2) | — | saldo atual; normalizado para 2 casas decimais na leitura (ver nota abaixo) |
+| `balance_currency` | `S` | `String` | — | código ISO 4217 (ex.: `BRL`) |
+| `updated_at` | `N` | `long` (epoch µs) | **usado na condição de escrita** | timestamp do evento (`transaction.timestamp`) que originou este saldo |
+| `last_transaction_id` | `S` | `UUID` | — | id da transação que gerou a última atualização (rastreabilidade) |
+
+- **Billing mode:** `PAY_PER_REQUEST` (on-demand) — sem necessidade de provisionar capacidade para o volume do desafio.
+- **Nota sobre `balance_amount`:** o tipo `Number` do DynamoDB não preserva zeros à direita (um valor gravado como `500.00` volta como `500` num `GetItem`). `DynamoDbBalanceRepository` normaliza para 2 casas decimais (`setScale(2, RoundingMode.HALF_UP)`) na leitura, garantindo que a API sempre devolva a unidade mínima do BRL de forma consistente — só percebido rodando contra um DynamoDB real, ver [Validação end-to-end](#validação-end-to-end-evidências).
+
+O diagrama abaixo mostra o próprio mecanismo de concorrência: dois eventos chegando fora de ordem para a mesma conta, e como a condição de escrita decide qual prevalece.
+
+```mermaid
+sequenceDiagram
+    participant K as Kafka (transacoes-financeiras-processadas)
+    participant C as TransactionEventConsumer
+    participant S as ProcessTransactionEventService
+    participant D as DynamoDB (AccountBalances)
+
+    K->>C: evento A (timestamp = 200)
+    C->>S: process(A)
+    S->>D: PutItem … WHERE attribute_not_exists(updated_at) OR updated_at < 200
+    D-->>S: sucesso — saldo de A persistido
+
+    Note over K,D: evento B chega depois, mas é mais antigo (fora de ordem)
+    K->>C: evento B (timestamp = 150)
+    C->>S: process(B)
+    S->>D: PutItem … WHERE attribute_not_exists(updated_at) OR updated_at < 150
+    D-->>S: ConditionalCheckFailedException
+    S-->>C: saveIfNewer = false — evento B ignorado, sem erro
+```
+
 ## Endpoints da API
 
 ### `GET /balances/{accountId}`
@@ -304,16 +378,40 @@ Todas têm valor padrão para desenvolvimento local (fora do Docker Compose) e s
 
 ## Como rodar
 
-Pré-requisito único: **Docker** (com Docker Compose). O `make` já vem instalado por padrão em Linux e macOS; no Windows, use o **WSL2** (o Makefile depende de utilitários estilo Unix e não roda direto no PowerShell/cmd).
+Pré-requisito único: **Docker** (com Docker Compose v2). O `make` já vem instalado por padrão em Linux e macOS; no Windows, use o **WSL2** (o Makefile depende de utilitários estilo Unix e não roda direto no PowerShell/cmd) — testado e confirmado funcionando dessa forma, ver [Validação end-to-end](#validação-end-to-end-evidências). Como tudo roda dentro de containers Docker, o mesmo passo a passo vale para **Linux, macOS e Windows (via WSL2)** sem nenhuma alteração.
 
-```bash
-make up                                                                              # sobe tudo em background: app + DynamoDB + Redpanda (+ seeds + consoles)
-make logs                                                                            # acompanha os logs da aplicação
-make kafka-produce-transactions-events TOPIC=transacoes-financeiras-processadas COUNT=10  # gera eventos de teste
-# copie um account.id publicado (Redpanda Console ou `make kafka-consume TOPIC=transacoes-financeiras-processadas`)
-curl "http://localhost:8080/balances/<accountId>"
-make stop                                                                            # derruba tudo
-```
+**Passo a passo:**
+
+1. **Subir a stack completa** (app + DynamoDB + Redpanda + seeds + consoles, tudo em background):
+   ```bash
+   make up
+   ```
+   Na primeira vez o Docker baixa as imagens (~5) e builda a aplicação — pode levar alguns minutos. Acompanhe com:
+   ```bash
+   make logs
+   ```
+2. **Confirmar que subiu tudo certo** — nos logs, procure por `Started Application` (a app) e verifique que os containers de seed terminaram com sucesso:
+   ```bash
+   docker compose ps -a   # dynamodb-seed e redpanda-seed devem mostrar "Exited (0)"
+   ```
+   O seed do Redpanda já publica 20 eventos de teste automaticamente, então a essa altura a tabela `AccountBalances` já deve ter saldos persistidos.
+3. **Gerar mais eventos de teste** (opcional — o seed inicial já publica 20):
+   ```bash
+   make kafka-produce-transactions-events TOPIC=transacoes-financeiras-processadas COUNT=10
+   ```
+4. **Obter um `accountId` real** para consultar (o DynamoDB não vem pré-populado com IDs fixos — os IDs são gerados aleatoriamente pelo seed):
+   ```bash
+   make kafka-consume TOPIC=transacoes-financeiras-processadas
+   # ou: make db-scan (lista os saldos já persistidos, com o account_id de cada um)
+   ```
+5. **Consultar o saldo pela API:**
+   ```bash
+   curl "http://localhost:8080/balances/<accountId>"
+   ```
+6. **Derrubar tudo** ao terminar:
+   ```bash
+   make stop
+   ```
 
 Consoles web disponíveis depois de subir a stack:
 
@@ -398,16 +496,16 @@ Execute `make help` a qualquer momento para ver esta lista no terminal.
 
 ## Testes
 
-O projeto tem duas suítes de teste bem separadas:
+O projeto tem duas suítes de teste bem separadas, **68 testes unitários + 6 testes de integração** no total.
 
-### `src/test` — testes unitários (`./gradlew test`)
+### `src/test` — 68 testes unitários (`./gradlew test`)
 Não dependem de nenhuma infraestrutura externa — rodam em qualquer lugar, inclusive dentro do container Docker de teste (`make test`), sem Docker-in-Docker.
 
 - Testes de domínio, aplicação e adapters usando **fakes/mocks** para os *ports* (nenhuma chamada real a DynamoDB ou Kafka), cobrindo o caminho feliz e casos de borda: eventos duplicados/fora de ordem, saldo negativo, UUID inválido, `owner` ausente, falhas de infraestrutura propagadas corretamente.
 - `BalanceControllerTest` usa `MockMvc` + `@MockitoBean` para isolar a camada web (200, 404, 400, 500).
 - `HexagonalArchitectureTest` valida a direção de dependências entre as camadas (ArchUnit).
 
-### `src/integrationTest` — testes de integração (`./gradlew integrationTest`)
+### `src/integrationTest` — 6 testes de integração (`./gradlew integrationTest`)
 Rodam contra infraestrutura **real**, subida via Docker Compose. Ficam propositalmente fora do `check`/`test` para não exigir infra no pipeline padrão.
 
 - `DynamoDbBalanceRepositoryIntegrationTest` — grava e lê saldo de uma tabela DynamoDB real (`make db-up`), incluindo o cenário de não sobrescrever saldo com evento mais antigo.
@@ -421,6 +519,24 @@ Configurado com **JaCoCo**, gate mínimo de **90% de cobertura de instruções**
 
 Relatório HTML completo em `build/reports/jacoco/test/html/index.html` após rodar `./gradlew test` ou `make test`.
 
+## Validação end-to-end (evidências)
+
+Além dos testes automatizados, a stack completa foi validada rodando de verdade — Docker Compose real (DynamoDB Local + Redpanda + a aplicação), não apenas mocks — para confirmar que "os testes passam" e "o sistema funciona" são de fato a mesma coisa aqui. Essa verificação foi feita em **Windows via WSL2**, comprovando também a execução cross-platform.
+
+O que foi confirmado, com evidência real:
+
+1. **`make up` sobe a stack do zero** — build da imagem, `dynamodb-seed` cria a tabela `AccountBalances` (`"TableStatus": "ACTIVE"`), `redpanda-seed` cria os dois tópicos e publica 20 eventos de teste (`Done. Published 20 event(s)`), a aplicação inicia (`Started Application`).
+2. **O consumer processa os eventos do seed de verdade** — `make db-scan` passou de `"Count": 0` para `"Count": 20` depois do seed, com todos os campos do item (`account_id`, `owner`, `balance_amount`, `balance_currency`, `updated_at`, `last_transaction_id`) persistidos corretamente.
+3. **A API responde com o contrato exato do enunciado** — `GET /balances/{accountId}` real devolveu `{"id":"...","owner":"...","balance":{"amount":19548.89,"currency":"BRL"},"updated_at":"2026-09-02T10:57:06.948401Z"}` (`updated_at` em snake_case, como especificado); conta inexistente devolveu `404` com `ACCOUNT_BALANCE_NOT_FOUND`; UUID inválido devolveu `400` com `INVALID_ACCOUNT_ID`.
+4. **Idempotência e ordenação testadas manualmente** — publiquei via `rpk topic produce` um evento duplicado (mesmo `transaction.id`, mesmo `timestamp`) e um evento mais antigo para uma conta com saldo já persistido: o saldo **não mudou** em nenhum dos dois casos. Publiquei em seguida um evento mais novo: o saldo **atualizou**.
+5. **Mensagem malformada foi para a DLT sem derrubar o consumer** — publiquei um payload com JSON inválido; apareceu em `transacoes-financeiras-processadas.DLT.manual` como um `DltEnvelope` com o motivo do erro, e o consumer continuou processando as mensagens seguintes normalmente.
+6. **`./gradlew integrationTest` rodou contra essa infraestrutura real** — 6 de 6 testes de integração passando.
+
+Essa verificação ao vivo (e não só os testes com mock) encontrou e permitiu corrigir dois problemas reais antes da entrega:
+
+- **O consumer Kafka não iniciava.** No Spring Boot 4, ter `org.springframework.kafka:spring-kafka` no classpath deixou de ser suficiente — a auto-configuração que ativa o processamento de `@KafkaListener` foi extraída para o módulo `spring-boot-starter-kafka`. Sem ele, a aplicação subia sem nenhum erro e simplesmente nunca se conectava ao broker. Só apareceu rodando a stack real; testes unitários com mock não dependem dessa auto-configuração.
+- **O DynamoDB real não preserva zeros à direita em atributos `Number`** (ver nota em [Modelo de dados](#modelo-de-dados--dynamodb)) — só reproduzido pelos testes de integração contra infraestrutura real, não pelos testes unitários com mock.
+
 ## Trade-offs e próximos passos
 
 Dado o prazo do desafio, ficaram de fora — documentados aqui conforme sugerido no enunciado:
@@ -428,3 +544,19 @@ Dado o prazo do desafio, ficaram de fora — documentados aqui conforme sugerido
 - **Circuit breaker nas chamadas ao DynamoDB**: hoje a resiliência é tratada apenas no nível do consumer Kafka (retry com backoff exponencial antes de ir para a DLT). Um circuit breaker (ex.: Resilience4j) em `DynamoDbBalanceRepository` evitaria sobrecarregar o DynamoDB com tentativas durante uma indisponibilidade prolongada e permitiria falhar rápido no `GET /balances/{accountId}` nesse cenário.
 - **Índice secundário por `owner`**: a tabela `AccountBalances` só é consultada por `account_id` (o único caso de uso pedido). Um GSI por `owner` seria necessário caso surja o requisito de consultar todos os saldos de um titular.
 - **Métricas de negócio dedicadas**: o Actuator expõe métricas técnicas padrão (JVM, HTTP, Kafka listener); métricas específicas de domínio (ex.: contagem de eventos rejeitados por tipo de erro, latência de ponta a ponta evento→saldo persistido) ficariam a cargo de um `MeterRegistry` customizado.
+
+## Aderência aos critérios de avaliação
+
+Os sete pontos listados em "O que será avaliado" no enunciado do desafio, e onde cada um é endereçado neste repositório:
+
+| Critério | Onde |
+|-|-|
+| Modelagem de dados no DynamoDB (partition key, sort key, índices secundários) | [Modelo de dados — DynamoDB](#modelo-de-dados--dynamodb) |
+| Tratamento de concorrência (saldo reflete a transação mais recente mesmo fora de ordem) | [Regra de negócio](#regra-de-negócio), escrita condicional em [Modelo de dados](#modelo-de-dados--dynamodb), testado ao vivo em [Validação end-to-end](#validação-end-to-end-evidências) |
+| Resiliência (retries, backoff, circuit breaker onde oportuno) | `KafkaConsumerConfig` em [Arquitetura](#arquitetura); ausência de circuit breaker justificada em [Trade-offs e próximos passos](#trade-offs-e-próximos-passos) |
+| Testes (fluxos principais e corner cases: duplicidade, fora de ordem, conta inexistente) | [Testes](#testes) — 68 testes unitários + 6 de integração, 94,6% de cobertura |
+| Qualidade de código (organização, legibilidade, aderência à arquitetura hexagonal) | [Arquitetura](#arquitetura), validado por `HexagonalArchitectureTest`; ausência de resíduos do template |
+| Tratamento de cenários adversos | 404/400/500 tratados em [Endpoints da API](#endpoints-da-api); DLT em [Mensageria Kafka](#mensageria-kafka); tudo testado ao vivo em [Validação end-to-end](#validação-end-to-end-evidências) |
+| Production readiness (logging, métricas, conteinerização) | Actuator em [Stack](#stack); logs estruturados no consumer; multi-stage Dockerfile |
+
+O que não deu tempo de implementar está documentado com o motivo em [Trade-offs e próximos passos](#trade-offs-e-próximos-passos), como o próprio enunciado sugere.
