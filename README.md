@@ -139,7 +139,7 @@ Ou seja: transações chegam via Kafka e atualizam o saldo persistido no DynamoD
 ```
 src/main/java/br/com/itau/challenge/
 ├── Application.java                        # bootstrap Spring Boot
-└── hello/
+└── corebanking/
     ├── domain/                             # modelos e exceções de domínio
     ├── port/{input,output}/                # contratos (interfaces)
     ├── application/                        # casos de uso
@@ -156,8 +156,6 @@ infra/                                       # seeds de infraestrutura local (Do
 
 http/                                       # arquivos .http para chamar a API manualmente
 ```
-
-> O pacote raiz do domínio ainda se chama `hello` (nome herdado do starter-kit original). Trocá-lo é possível, mas foi deliberadamente deixado de fora do escopo desta entrega para não gerar um diff gigante em cima da lógica de negócio — ver [Trade-offs e próximos passos](#trade-offs-e-próximos-passos).
 
 ## Regra de negócio
 
@@ -429,5 +427,4 @@ Dado o prazo do desafio, ficaram de fora — documentados aqui conforme sugerido
 
 - **Circuit breaker nas chamadas ao DynamoDB**: hoje a resiliência é tratada apenas no nível do consumer Kafka (retry com backoff exponencial antes de ir para a DLT). Um circuit breaker (ex.: Resilience4j) em `DynamoDbBalanceRepository` evitaria sobrecarregar o DynamoDB com tentativas durante uma indisponibilidade prolongada e permitiria falhar rápido no `GET /balances/{accountId}` nesse cenário.
 - **Índice secundário por `owner`**: a tabela `AccountBalances` só é consultada por `account_id` (o único caso de uso pedido). Um GSI por `owner` seria necessário caso surja o requisito de consultar todos os saldos de um titular.
-- **Renomear o pacote raiz `hello`**: nome herdado do starter-kit original; mantido para não gerar um diff desnecessariamente grande em cima da lógica de negócio nesta entrega.
 - **Métricas de negócio dedicadas**: o Actuator expõe métricas técnicas padrão (JVM, HTTP, Kafka listener); métricas específicas de domínio (ex.: contagem de eventos rejeitados por tipo de erro, latência de ponta a ponta evento→saldo persistido) ficariam a cargo de um `MeterRegistry` customizado.
