@@ -43,8 +43,6 @@ public class KafkaInvalidMessagePublisher implements InvalidMessagePublisher {
                 }
             });
         } catch (Exception ex) {
-            // Falha ao publicar na DLT não deve derrubar o consumer principal.
-            // O log estruturado é a última linha de defesa para não perder o rastro.
             log.error("Erro crítico: não foi possível publicar mensagem na DLT. reason={}", reason, ex);
         }
     }

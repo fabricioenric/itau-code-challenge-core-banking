@@ -43,7 +43,7 @@ Este repositório parte do `itau-code-challange-starter-kit`, o template oficial
 - o esqueleto de arquitetura hexagonal (pastas `domain`/`port`/`application`/`adapter`) e o teste que a protege (`HexagonalArchitectureTest`, ArchUnit);
 - toda a infraestrutura local em Docker Compose (DynamoDB Local, Redpanda, consoles web, containers de seed);
 - o `Makefile`, o gate de cobertura JaCoCo (90%) e o pipeline de CI (GitHub Actions);
-- um exemplo de ponta a ponta **de outro domínio** (`GreetingTemplateConsumer`/`GreetingController`, um "hello world" com Kafka + DynamoDB) demonstrando o padrão a seguir.
+- um exemplo de ponta a ponta **de outro domínio**, ilustrando o padrão a seguir com um consumer Kafka e um endpoint REST simples ligados ao DynamoDB.
 
 **Nada da lógica de negócio do desafio vinha pronta.** O que foi construído em cima do template:
 
@@ -54,7 +54,7 @@ Este repositório parte do `itau-code-challange-starter-kit`, o template oficial
 - o endpoint REST (`BalanceController`) e o tratamento de erros HTTP (`GlobalExceptionHandler`);
 - 64 testes novos (58 unitários + 6 de integração — de um total de 68 unitários, os outros 10 são `ApplicationTests` e `HexagonalArchitectureTest` adaptados do template), cobrindo especificamente os cenários que o enunciado pede ("mensagens duplicadas, transações fora de ordem, conta inexistente");
 - Spring Boot Actuator, não presente no template;
-- e a limpeza completa de tudo que era específico do exemplo `hello`/`greeting` — pacote raiz renomeado, scripts de seed reescritos, arquivos mortos removidos, nomes de imagem Docker/CI corrigidos (ver [Aderência aos critérios de avaliação](#aderência-aos-critérios-de-avaliação)).
+- e a limpeza completa de tudo que era específico do exemplo original do template — pacote raiz renomeado, scripts de seed reescritos, arquivos mortos removidos, nomes de imagem Docker/CI corrigidos (ver [Aderência aos critérios de avaliação](#aderência-aos-critérios-de-avaliação)).
 
 ## Stack
 

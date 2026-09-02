@@ -20,14 +20,6 @@ import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Mensagens estruturalmente inválidas (falha de desserialização/validação) já são tratadas e
- * confirmadas dentro de {@link TransactionEventConsumer}. Esta configuração cobre o outro caso:
- * falhas transitórias durante o processamento (ex.: DynamoDB indisponível), que o listener
- * propaga sem confirmar o offset. Aqui elas são reprocessadas com backoff exponencial e, se
- * continuarem falhando, publicadas na DLT pelo mesmo {@link InvalidMessagePublisher} usado para
- * as demais rejeições — mantendo um único formato de envelope na DLT.
- */
 @Configuration
 public class KafkaConsumerConfig {
 

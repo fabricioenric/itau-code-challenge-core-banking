@@ -52,7 +52,6 @@ public class DynamoDbBalanceRepository implements BalanceRepository {
             dynamoDbClient.putItem(request);
             return true;
         } catch (ConditionalCheckFailedException ex) {
-            // Evento antigo ou duplicado — comportamento esperado, não é erro
             return false;
         }
     }
@@ -105,8 +104,6 @@ public class DynamoDbBalanceRepository implements BalanceRepository {
     }
 
     private AccountBalance toDomain(Map<String, AttributeValue> item) {
-        // O tipo Number do DynamoDB não preserva zeros à direita (500.00 volta como 500):
-        // normaliza para 2 casas decimais (unidade mínima do BRL) na leitura.
         Balance balance = new Balance(
                 new BigDecimal(item.get("balance_amount").n()).setScale(2, RoundingMode.HALF_UP),
                 item.get("balance_currency").s()

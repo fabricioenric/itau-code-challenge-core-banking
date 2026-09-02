@@ -142,8 +142,6 @@ class TransactionEventMapperTest {
 
     @Test
     void deveMapearAmountNegativoSemValidarRegraDeNegocio() {
-        // A validação de valores de negócio (ex.: amount negativo) é responsabilidade da camada
-        // de aplicação (ProcessTransactionEventService), não do mapper — ver ProcessTransactionEventServiceTest.
         TransactionEventDTO dto = new TransactionEventDTO(
                 validTransactionDto("APPROVED"),
                 new TransactionEventDTO.AccountDTO(
