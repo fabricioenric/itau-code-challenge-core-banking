@@ -1,26 +1,15 @@
-#!/bin/bash
-set -euo pipefail
+#!/bin/sh
+set -e
 
-BROKERS="${REDPANDA_BROKERS:-redpanda:9092}"
-TOPIC_NAME="${GREETING_TEMPLATES_TOPIC:-greeting-templates}"
-SEED_FILE="/redpanda-seed/greeting-templates-seed.jsonl"
+echo "Criando tópico ${TRANSACTIONS_TOPIC}..."
+rpk topic create "${TRANSACTIONS_TOPIC}" --brokers redpanda:9092 \
+  || echo "Tópico ${TRANSACTIONS_TOPIC} já existe, seguindo em frente."
 
-echo "Waiting for Redpanda broker at ${BROKERS}..."
-until rpk cluster info --brokers "${BROKERS}" >/dev/null 2>&1; do
-  echo "  not ready yet, retrying in 2s..."
-  sleep 2
-done
-echo "Redpanda broker is ready."
+echo "Criando tópico ${TRANSACTIONS_DLT_TOPIC}..."
+rpk topic create "${TRANSACTIONS_DLT_TOPIC}" --brokers redpanda:9092 \
+  || echo "Tópico ${TRANSACTIONS_DLT_TOPIC} já existe, seguindo em frente."
 
-if rpk topic describe "${TOPIC_NAME}" --brokers "${BROKERS}" >/dev/null 2>&1; then
-  echo "Topic '${TOPIC_NAME}' already exists, skipping creation."
-else
-  echo "Creating topic '${TOPIC_NAME}'..."
-  rpk topic create "${TOPIC_NAME}" --brokers "${BROKERS}" --partitions 1 --replicas 1
-fi
+echo "Publicando eventos de teste em ${TRANSACTIONS_TOPIC}..."
+rpk topic produce "${TRANSACTIONS_TOPIC}" --brokers redpanda:9092 < /infra/redpanda/transactions-events-seed.jsonl
 
-echo "Publishing seed messages from ${SEED_FILE}..."
-rpk topic produce "${TOPIC_NAME}" --brokers "${BROKERS}" -f '%v\n' < "${SEED_FILE}"
-
-COUNT=$(wc -l < "${SEED_FILE}" | tr -d ' ')
-echo "Seed complete. Published ${COUNT} message(s) to '${TOPIC_NAME}'."
+echo "Seed do Redpanda concluído."

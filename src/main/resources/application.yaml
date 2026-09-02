@@ -1,18 +1,25 @@
 spring:
   application:
-    name: itau-code-challange-starter-kit
+    name: itau-code-challenge-core-banking
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
     consumer:
-      group-id: ${KAFKA_CONSUMER_GROUP_ID:hello-greeting-template-consumer}
+      group-id: ${KAFKA_CONSUMER_GROUP_ID:consulta-saldo-consumer}
+      enable-auto-commit: false
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    listener:
+      ack-mode: manual
 
 dynamodb:
   endpoint: ${DYNAMODB_ENDPOINT:http://localhost:8000}
   region: ${DYNAMODB_REGION:us-east-1}
-  table-name: ${GREETING_TABLE_NAME:GreetingMessages}
 
-greeting-templates:
-  topic-name: ${GREETING_TEMPLATES_TOPIC:greeting-templates}
+BALANCES_TABLE_NAME: ${BALANCES_TABLE_NAME:AccountBalances}
+TRANSACTIONS_TOPIC: ${TRANSACTIONS_TOPIC:transacoes-financeiras-processadas}
+TRANSACTIONS_DLT_TOPIC: ${TRANSACTIONS_DLT_TOPIC:transacoes-financeiras-processadas.DLT.manual}
