@@ -1,11 +1,15 @@
-### Consulta de saldo existente
+### Consulta de saldo existente (conta do seed inicial)
 GET http://localhost:8080/balances/5b19c8b6-0cc4-4c72-a989-0c2ee15fa975
 Accept: application/json
 
-### Conta inexistente (404)
+### Consulta de saldo existente (segunda conta do seed)
+GET http://localhost:8080/balances/a3f1c2d4-1234-4abc-9def-000000000001
+Accept: application/json
+
+### Conta inexistente (404 esperado)
 GET http://localhost:8080/balances/00000000-0000-0000-0000-000000000000
 Accept: application/json
 
-### UUID inválido (400)
+### UUID inválido (400 esperado)
 GET http://localhost:8080/balances/isso-nao-e-um-uuid
 Accept: application/json

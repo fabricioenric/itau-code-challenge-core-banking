@@ -1,13 +1,13 @@
 plugins {
-	id 'java'
-	id 'org.springframework.boot' version '4.1.0'
-	id 'io.spring.dependency-management' version '1.1.7'
-	id 'jacoco'
+    id 'org.springframework.boot' version '4.1.0'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'java'
+    id 'jacoco'
 }
 
 group = 'br.com.itau'
 version = '0.0.1-SNAPSHOT'
-description = 'itau-code-challange-starter-kit'
+description = 'itau-code-challenge-core-banking'
 
 java {
 	toolchain {
@@ -19,45 +19,47 @@ repositories {
 	mavenCentral()
 }
 
-dependencies {
-	implementation platform('software.amazon.awssdk:bom:2.46.7')
-	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
-	implementation 'software.amazon.awssdk:dynamodb'
-	implementation 'org.springframework.boot:spring-boot-starter-kafka'
-	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
-	testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-	integrationTestImplementation 'org.awaitility:awaitility:4.2.2'
-}
-
 // Integration tests require live infrastructure (e.g. `make db-up`) and are intentionally
 // kept out of `test`/`check` so the default build stays infra-free and gate-friendly.
 sourceSets {
-	integrationTest {
-		java.srcDir 'src/integrationTest/java'
-		resources.srcDir 'src/integrationTest/resources'
-		compileClasspath += sourceSets.main.output + sourceSets.test.output
-		runtimeClasspath += sourceSets.main.output + sourceSets.test.output
-	}
+    integrationTest {
+        java.srcDir 'src/integrationTest/java'
+        resources.srcDir 'src/integrationTest/resources'
+        compileClasspath += sourceSets.main.output + sourceSets.test.output
+        runtimeClasspath += sourceSets.main.output + sourceSets.test.output
+    }
 }
 
 configurations {
-	integrationTestImplementation.extendsFrom testImplementation
-	integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+dependencies {
+	implementation platform('software.amazon.awssdk:bom:2.29.0')
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.kafka:spring-kafka'
+    implementation 'software.amazon.awssdk:dynamodb'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
+    testImplementation 'com.tngtech.archunit:archunit-junit5'
+
+    integrationTestImplementation 'org.awaitility:awaitility:4.2.2'
 }
 
 def integrationTest = tasks.register('integrationTest', Test) {
-	description = 'Runs integration tests against live infrastructure (start it first with `make db-up`).'
-	group = 'verification'
-	testClassesDirs = sourceSets.integrationTest.output.classesDirs
-	classpath = sourceSets.integrationTest.runtimeClasspath
-	useJUnitPlatform()
-	shouldRunAfter tasks.test
+    description = 'Runs integration tests against live infrastructure (start it first with `make db-up`).'
+    group = 'verification'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    useJUnitPlatform()
+    shouldRunAfter tasks.test
 
-	testLogging {
-		events 'passed', 'skipped', 'failed'
-		exceptionFormat = 'short'
-	}
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat = 'short'
+    }
 }
 
 jacoco {

@@ -19,7 +19,3 @@ spring:
 dynamodb:
   endpoint: ${DYNAMODB_ENDPOINT:http://localhost:8000}
   region: ${DYNAMODB_REGION:us-east-1}
-
-BALANCES_TABLE_NAME: ${BALANCES_TABLE_NAME:AccountBalances}
-TRANSACTIONS_TOPIC: ${TRANSACTIONS_TOPIC:transacoes-financeiras-processadas}
-TRANSACTIONS_DLT_TOPIC: ${TRANSACTIONS_DLT_TOPIC:transacoes-financeiras-processadas.DLT.manual}
